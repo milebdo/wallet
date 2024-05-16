@@ -18,15 +18,15 @@
 # this script is actually in and infer location from there. (putting first)
 
 ROOTDIR=$(cd "$(dirname "$0")" && pwd)
-export PATH=${ROOTDIR}/../bin:${PWD}/../bin:$PATH
-export FABRIC_CFG_PATH=${PWD}/configtx
+export PATH=${ROOTDIR}/bin:${PWD}/bin:$PATH
+export FABRIC_CFG_PATH=${PWD}/base/configtx
 export VERBOSE=false
 
 # push to the required directory & set a trap to go back if needed
 pushd ${ROOTDIR} > /dev/null
 trap "popd > /dev/null" EXIT
 
-. scripts/utils.sh
+. base/scripts/utils.sh
 
 : ${CONTAINER_CLI:="docker"}
 if command -v ${CONTAINER_CLI}-compose > /dev/null 2>&1; then
@@ -61,9 +61,9 @@ NONWORKING_VERSIONS="^1\.0\. ^1\.1\. ^1\.2\. ^1\.3\. ^1\.4\."
 # of go or other items could be added.
 function checkPrereqs() {
   ## Check if your have cloned the peer binaries and configuration files.
-  peer version > /dev/null 2>&1
+  bin/peer version > /dev/null 2>&1
 
-  if [[ $? -ne 0 || ! -d "../config" ]]; then
+  if [[ $? -ne 0 || ! -d "config" ]]; then
     errorln "Peer binary and configuration files not found.."
     errorln
     errorln "Follow the instructions in the Fabric docs to install the Fabric Binaries:"
@@ -72,7 +72,7 @@ function checkPrereqs() {
   fi
   # use the fabric peer container to see if the samples and binaries match your
   # docker images
-  LOCAL_VERSION=$(peer version | sed -ne 's/^ Version: //p')
+  LOCAL_VERSION=$(bin/peer version | sed -ne 's/^ Version: //p')
   DOCKER_IMAGE_VERSION=$(${CONTAINER_CLI} run --rm hyperledger/fabric-peer:latest peer version | sed -ne 's/^ Version: //p')
 
   infoln "LOCAL_VERSION=$LOCAL_VERSION"
@@ -110,7 +110,7 @@ function checkPrereqs() {
   ## Check for fabric-ca
   if [ "$CRYPTO" == "Certificate Authorities" ]; then
 
-    fabric-ca-client version > /dev/null 2>&1
+    bin/fabric-ca-client version > /dev/null 2>&1
     if [[ $? -ne 0 ]]; then
       errorln "fabric-ca-client binary not found.."
       errorln
@@ -118,7 +118,7 @@ function checkPrereqs() {
       errorln "https://hyperledger-fabric.readthedocs.io/en/latest/install.html"
       exit 1
     fi
-    CA_LOCAL_VERSION=$(fabric-ca-client version | sed -ne 's/ Version: //p')
+    CA_LOCAL_VERSION=$(bin/fabric-ca-client version | sed -ne 's/ Version: //p')
     CA_DOCKER_IMAGE_VERSION=$(${CONTAINER_CLI} run --rm hyperledger/fabric-ca:latest fabric-ca-client version | sed -ne 's/ Version: //p' | head -1)
     infoln "CA_LOCAL_VERSION=$CA_LOCAL_VERSION"
     infoln "CA_DOCKER_IMAGE_VERSION=$CA_DOCKER_IMAGE_VERSION"
@@ -155,13 +155,13 @@ function checkPrereqs() {
 
 # Create Organization crypto material using cryptogen or CAs
 function createOrgs() {
-  if [ -d "organizations/peerOrganizations" ]; then
-    rm -Rf organizations/peerOrganizations && rm -Rf organizations/ordererOrganizations
+  if [ -d "base/organizations/peerOrganizations" ]; then
+    rm -Rf base/organizations/peerOrganizations && rm -Rf base/organizations/ordererOrganizations
   fi
 
   # Create crypto material using cryptogen
   if [ "$CRYPTO" == "cryptogen" ]; then
-    which cryptogen
+    which bin/cryptogen
     if [ "$?" -ne 0 ]; then
       fatalln "cryptogen tool not found. exiting"
     fi
@@ -170,7 +170,7 @@ function createOrgs() {
     infoln "Creating Org1 Identities"
 
     set -x
-    cryptogen generate --config=./organizations/cryptogen/crypto-config-org1.yaml --output="organizations"
+    bin/cryptogen generate --config=./base/organizations/cryptogen/crypto-config-org1.yaml --output="organizations"
     res=$?
     { set +x; } 2>/dev/null
     if [ $res -ne 0 ]; then
@@ -180,7 +180,7 @@ function createOrgs() {
     infoln "Creating Org2 Identities"
 
     set -x
-    cryptogen generate --config=./organizations/cryptogen/crypto-config-org2.yaml --output="organizations"
+    bin/cryptogen generate --config=./base/organizations/cryptogen/crypto-config-org2.yaml --output="organizations"
     res=$?
     { set +x; } 2>/dev/null
     if [ $res -ne 0 ]; then
@@ -190,7 +190,7 @@ function createOrgs() {
     infoln "Creating Orderer Org Identities"
 
     set -x
-    cryptogen generate --config=./organizations/cryptogen/crypto-config-orderer.yaml --output="organizations"
+    bin/cryptogen generate --config=./base/organizations/cryptogen/crypto-config-orderer.yaml --output="organizations"
     res=$?
     { set +x; } 2>/dev/null
     if [ $res -ne 0 ]; then
@@ -202,7 +202,7 @@ function createOrgs() {
   # Create crypto material using cfssl
   if [ "$CRYPTO" == "cfssl" ]; then
 
-    . organizations/cfssl/registerEnroll.sh
+    . base/organizations/cfssl/registerEnroll.sh
     #function_name cert-type   CN   org
     peer_cert peer peer0.org1.example.com org1
     peer_cert admin Admin@org1.example.com org1
@@ -250,7 +250,7 @@ function createOrgs() {
   fi
 
   infoln "Generating CCP files for Org1 and Org2"
-  ./organizations/ccp-generate.sh
+  ./base/organizations/ccp-generate.sh
 }
 
 # Once you create the organization crypto material, you need to create the
@@ -289,10 +289,10 @@ function networkUp() {
     createOrgs
   fi
 
-  COMPOSE_FILES="-f compose/${COMPOSE_FILE_BASE} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_BASE}"
+  COMPOSE_FILES="-f ${COMPOSE_FILE_BASE} -f ${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_BASE}"
 
   if [ "${DATABASE}" == "couchdb" ]; then
-    COMPOSE_FILES="${COMPOSE_FILES} -f compose/${COMPOSE_FILE_COUCH} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_COUCH}"
+    COMPOSE_FILES="${COMPOSE_FILES} -f ${COMPOSE_FILE_COUCH} -f ${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_COUCH}"
   fi
 
   DOCKER_SOCK="${DOCKER_SOCK}" ${CONTAINER_CLI_COMPOSE} ${COMPOSE_FILES} up -d 2>&1
@@ -419,7 +419,7 @@ function queryChaincode() {
 function networkDown() {
   local temp_compose=$COMPOSE_FILE_BASE
   COMPOSE_FILE_BASE=compose-bft-test-net.yaml
-  COMPOSE_BASE_FILES="-f compose/${COMPOSE_FILE_BASE} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_BASE}"
+  COMPOSE_BASE_FILES="-f ${COMPOSE_FILE_BASE} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_BASE}"
   COMPOSE_COUCH_FILES="-f compose/${COMPOSE_FILE_COUCH} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_COUCH}"
   COMPOSE_CA_FILES="-f compose/${COMPOSE_FILE_CA} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_CA}"
   COMPOSE_FILES="${COMPOSE_BASE_FILES} ${COMPOSE_COUCH_FILES} ${COMPOSE_CA_FILES}"
@@ -463,11 +463,11 @@ function networkDown() {
 . ./network.config
 
 # use this as the default docker-compose yaml definition
-COMPOSE_FILE_BASE=compose-test-net.yaml
+COMPOSE_FILE_BASE=base/compose/compose-test-net.yaml
 # docker-compose.yaml file if you are using couchdb
-COMPOSE_FILE_COUCH=compose-couch.yaml
+COMPOSE_FILE_COUCH=base/compose/compose-couch.yaml
 # certificate authorities compose file
-COMPOSE_FILE_CA=compose-ca.yaml
+COMPOSE_FILE_CA=base/compose/compose-ca.yaml
 # use this as the default docker-compose yaml definition for org3
 COMPOSE_FILE_ORG3_BASE=compose-org3.yaml
 # use this as the docker compose couch file for org3

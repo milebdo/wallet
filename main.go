@@ -1,26 +1,17 @@
 package main
 
 import (
-	"fmt"
-	"os"
+	"net/http"
 
-	"github.com/hyperledger/fabric-chaincode-go/shim"
-	"github.com/milebdo/wallet/wallet"
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 )
 
 func main() {
-
-	server := &shim.ChaincodeServer{
-		CCID:    os.Getenv("CORE_CHAINCODE_ID"),
-		Address: os.Getenv("CORE_CHAINCODE_ADDRESS"),
-		CC:      new(wallet.Wallet),
-		TLSProps: shim.TLSProperties{
-			Disabled: true,
-		},
-	}
-	err := server.Start()
-	if err != nil {
-		fmt.Printf("Error starting Simple chaincode: %s", err)
-	}
-
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("welcome"))
+	})
+	http.ListenAndServe(":3000", r)
 }
